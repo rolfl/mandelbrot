@@ -3,9 +3,9 @@ package net.tuis.mandelbrot;
 
 final class WindowState {
     private final int pixWidth, pixHeight, limit;
-    private final double focusX, focusY, zoom;
+    private final double focusX, focusY, zoom, step;
 
-    public WindowState(int pixWidth, int pixHeight, int limit, double focusX, double focusY, double zoom) {
+    public WindowState(int pixWidth, int pixHeight, int limit, double focusX, double focusY, double zoom, double step) {
         super();
         this.pixWidth = pixWidth;
         this.pixHeight = pixHeight;
@@ -13,6 +13,7 @@ final class WindowState {
         this.focusX = focusX;
         this.focusY = focusY;
         this.zoom = zoom;
+        this.step = step;
     }
 
     public int getPixWidth() {
@@ -37,6 +38,10 @@ final class WindowState {
 
     public double getZoom() {
         return zoom;
+    }
+    
+    public double getStep() {
+        return step;
     }
 
     @Override

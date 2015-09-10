@@ -4,6 +4,9 @@ import java.awt.BorderLayout;
 import java.awt.Dimension;
 import java.awt.GridLayout;
 import java.awt.event.ComponentAdapter;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.awt.event.MouseWheelEvent;
 import java.awt.image.BufferedImage;
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -45,17 +48,18 @@ public class Mandy extends JFrame {
 
     private final BlockingQueue<WindowState> stateq = new LinkedBlockingQueue<>();
     private final JLabel canvas = new JLabel();
-    private final JSpinner zoom = new JSpinner(new SpinnerNumberModel(0.0, -1.0, 150, 0.1));
-    private final JSpinner limit = new JSpinner(new SpinnerNumberModel(100, 10, 100000, 10));
+    private final SpinnerNumberModel zoomModel = new SpinnerNumberModel(0.0, -1.0, 150, 0.1);
     private final SpinnerNumberModel realModel = new SpinnerNumberModel(0.0, -2.5, 1.0, 0.1);
     private final SpinnerNumberModel imaginaryModel = new SpinnerNumberModel(0.0, -1.5, 1.5, 0.1);
+    private final JSpinner limit = new JSpinner(new SpinnerNumberModel(100, 10, 100000, 10));
+    private final JSpinner zoom = new JSpinner(zoomModel);
     private final JSpinner real = new JSpinner(realModel);
     private final JSpinner imaginary = new JSpinner(imaginaryModel);
     private final JLabel actualSpan = new JLabel();
     private final JLabel actualZoom = new JLabel();
     
     // only ever changed on the EDT
-    private final AtomicReference<WindowState> currentState = new AtomicReference<>(new WindowState(0, 0, 0, 0, 0, 0));
+    private final AtomicReference<WindowState> currentState = new AtomicReference<>(new WindowState(0, 0, 0, 0, 0, 0, 0));
     
     Mandy() {
         super("Mandelbrot Navigator");
@@ -97,6 +101,70 @@ public class Mandy extends JFrame {
                 checkState();
             }
         });
+        
+        MouseAdapter mouse = new MouseAdapter() {
+            private int sx, sy;
+            private boolean active = false;
+            @Override
+            public void mouseDragged(MouseEvent e) {
+                if (!active) {
+                    return;
+                }
+                int x = e.getX();
+                int y = e.getY();
+                int dx = x - sx;
+                int dy = y - sy;
+                WindowState state = currentState.get();
+                if (state == null) {
+                    return;
+                }
+                realModel.setValue(state.getFocusX() - dx * state.getStep());
+                imaginaryModel.setValue(state.getFocusY() - dy * state.getStep());
+                sx = x;
+                sy = y;
+                checkState();
+            }
+            @Override
+            public void mousePressed(MouseEvent e) {
+                active = e.getModifiersEx() == MouseEvent.BUTTON1_DOWN_MASK;
+                sx = e.getX();
+                sy = e.getY();
+            }
+            
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 2 && e.getButton() == 1) {
+                    // center on click point.
+                    WindowState state = currentState.get();
+                    if (state == null) {
+                        return;
+                    }
+                    int dx = state.getPixWidth() / 2 - e.getX();
+                    int dy = state.getPixHeight() / 2 - e.getY();
+                    double mx = state.getFocusX() - state.getStep() * dx;
+                    double my = state.getFocusY() - state.getStep() * dy;
+                    realModel.setValue(mx);
+                    imaginaryModel.setValue(my);
+                    checkState();
+                }
+            }
+            
+            @Override
+            public void mouseWheelMoved(MouseWheelEvent e) {
+                WindowState state = currentState.get();
+                if (state == null) {
+                    return;
+                }
+                double val = (double)zoomModel.getValue();
+                double nv = val - e.getWheelRotation() * zoomModel.getStepSize().doubleValue();
+                zoomModel.setValue(Math.min((double)zoomModel.getMaximum(), Math.max((double)zoomModel.getMinimum(), nv)));
+                checkState();
+            }
+        };
+        
+        canvas.addMouseMotionListener(mouse);
+        canvas.addMouseListener(mouse);
+        canvas.addMouseWheelListener(mouse);
         
         root.add(canvas, BorderLayout.CENTER);
         filler.add(controls, BorderLayout.NORTH);
@@ -144,7 +212,7 @@ public class Mandy extends JFrame {
         final double span = 3.5 / z;
         final double step = span / w;
         
-        final WindowState now = new WindowState(w, h, lim, x, y, z);
+        final WindowState now = new WindowState(w, h, lim, x, y, z, step);
         
         if (currentState.getAndSet(now).equals(now)) {
             // previous value is same as current.
@@ -155,8 +223,8 @@ public class Mandy extends JFrame {
         if (!stateq.offer(now)) {
             throw new IllegalStateException("Unable to process current state.");
         }
-        realModel.setStepSize(step);
-        imaginaryModel.setStepSize(step);
+        realModel.setStepSize(step * 5);
+        imaginaryModel.setStepSize(step * 5);
         actualZoom.setText(String.format("%8g", z));
         actualSpan.setText(String.format("%8g", span));
         
