@@ -1,2 +1,2 @@
-# mandelbrot
-A Java Swin-based GUI for visualizing and navigating in a mandebrot
+# Mandelbrot BUI
+A Java Swing-based GUI for visualizing and navigating in a mandebrot
