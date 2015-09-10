@@ -1,7 +1,9 @@
 package net.tuis.mandelbrot;
 
 import java.awt.BorderLayout;
+import java.awt.Color;
 import java.awt.Dimension;
+import java.awt.FlowLayout;
 import java.awt.GridLayout;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.MouseAdapter;
@@ -11,12 +13,16 @@ import java.awt.image.BufferedImage;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 
 import javax.swing.Icon;
 import javax.swing.ImageIcon;
+import javax.swing.JButton;
+import javax.swing.JComboBox;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
@@ -49,20 +55,26 @@ public class Mandy extends JFrame {
     private final BlockingQueue<WindowState> stateq = new LinkedBlockingQueue<>();
     private final JLabel canvas = new JLabel();
     private final SpinnerNumberModel zoomModel = new SpinnerNumberModel(0.0, -1.0, 150, 0.1);
-    private final SpinnerNumberModel realModel = new SpinnerNumberModel(0.0, -2.5, 1.0, 0.1);
+    private final SpinnerNumberModel realModel = new SpinnerNumberModel(-2.5 + 3.5/2.0, -2.5, 1.0, 0.1);
     private final SpinnerNumberModel imaginaryModel = new SpinnerNumberModel(0.0, -1.5, 1.5, 0.1);
-    private final JSpinner limit = new JSpinner(new SpinnerNumberModel(100, 10, 100000, 10));
+    private final JSpinner limit = new JSpinner(new SpinnerNumberModel(100, 10, 100000, 1));
     private final JSpinner zoom = new JSpinner(zoomModel);
     private final JSpinner real = new JSpinner(realModel);
     private final JSpinner imaginary = new JSpinner(imaginaryModel);
     private final JLabel actualSpan = new JLabel();
     private final JLabel actualZoom = new JLabel();
+    private final JLabel actualBrot = new JLabel();
+    private final JPanel actualFlag = new JPanel();
+    
+//    private final LineBorder borderRed = new LineBorder(Color.RED, 5, true);
+//    private final LineBorder borderGreen = new LineBorder(Color.GREEN, 3, true);
     
     // only ever changed on the EDT
     private final AtomicReference<WindowState> currentState = new AtomicReference<>(new WindowState(0, 0, 0, 0, 0, 0, 0));
     
     Mandy() {
         super("Mandelbrot Navigator");
+        setIconImages(FractIcons.getIcons());
         setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
         
         JPanel root = new JPanel(new BorderLayout());
@@ -72,7 +84,7 @@ public class Mandy extends JFrame {
         JPanel filler = new JPanel(new BorderLayout());
         JPanel controls = new JPanel();
         controls.setBorder(new BevelBorder(BevelBorder.LOWERED));
-        controls.setLayout(new GridLayout(0, 2, 3, 3));
+        controls.setLayout(new GridLayout(0, 2, 6, 6));
         controls.add(new JLabel("Zoom (exponential):"));
         controls.add(zoom);
         controls.add(new JLabel("Limit:"));
@@ -85,9 +97,23 @@ public class Mandy extends JFrame {
         controls.add(actualZoom);
         controls.add(new JLabel("Actual Span:"));
         controls.add(actualSpan);
+        controls.add(new JLabel("Render Time:"));
+        controls.add(actualBrot);
+        controls.add(new JLabel("Current Activity:"));
+        controls.add(actualFlag);
+        
+        JPanel exports = new JPanel(new FlowLayout());
+        exports.setBorder(new BevelBorder(BevelBorder.LOWERED));
+        exports.add(new JLabel("Resolution:"));
+        JComboBox<Resolution> res = new JComboBox<>(Resolution.values()); 
+        exports.add(res);
+        JButton exp = new JButton(new ExportAction(currentState, res));
+        exports.add(exp, BorderLayout.SOUTH);
         
         actualZoom.setHorizontalAlignment(SwingConstants.RIGHT);
         actualSpan.setHorizontalAlignment(SwingConstants.RIGHT);
+        actualBrot.setHorizontalAlignment(SwingConstants.RIGHT);
+        actualFlag.setBackground(Color.RED);
         zoom.setEditor(new JSpinner.NumberEditor(zoom, "0.0"));
         real.setEditor(new JSpinner.NumberEditor(real, "0.0000000000000000"));
         imaginary.setEditor(new JSpinner.NumberEditor(imaginary, "0.0000000000000000"));
@@ -168,6 +194,7 @@ public class Mandy extends JFrame {
         
         root.add(canvas, BorderLayout.CENTER);
         filler.add(controls, BorderLayout.NORTH);
+        filler.add(exports, BorderLayout.SOUTH);
         root.add(filler, BorderLayout.EAST);
         getContentPane().add(root);
         pack();
@@ -230,20 +257,22 @@ public class Mandy extends JFrame {
         
     }
 
-    private final ThreadLocal<int[]> colormap = new ThreadLocal<>();
+    private final ConcurrentMap<Integer, int[]> colormap = new ConcurrentHashMap<>();
     
     private void buildBrot(WindowState state) {
-        int[] cmap = colormap.get();
-        if (cmap == null || cmap.length != state.getLimit() + 1) {
-            cmap = Mandelbrot.buildColors(state.getLimit());
-            colormap.set(cmap);
-            System.out.println("Built color map of " + cmap.length + " colors");
-        }
+        SwingUtilities.invokeLater(() -> actualFlag.setBackground(Color.RED));
+        int[] cmap = colormap.computeIfAbsent(state.getLimit(), k -> Mandelbrot.buildColors(k));
+        long nanos = System.nanoTime();
         Mandelbrot.Window window = new Mandelbrot.Window(state.getFocusX(), state.getFocusY(), state.getZoom());
         int[][] brot = Mandelbrot.mandelbrot(state.getPixWidth(), state.getPixHeight(), state.getLimit(), window);
         BufferedImage image = Mandelbrot.mapMandelbrot(brot, cmap);
         final Icon icon = new ImageIcon(image);
-        SwingUtilities.invokeLater(() -> canvas.setIcon(icon));
+        SwingUtilities.invokeLater(() -> {
+            canvas.setIcon(icon);
+            actualBrot.setText(String.format("%.3f ms", (System.nanoTime() - nanos)/ 1000000.0));
+            actualFlag.setBackground(Color.GREEN);
+            checkState();
+        });
     }
 
 }

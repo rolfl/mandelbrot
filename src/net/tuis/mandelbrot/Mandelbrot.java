@@ -78,21 +78,19 @@ public class Mandelbrot {
             final int limit, final Window window) {
 
         final double mandWidth = 3.5 / window.getZoom();
-        final double mandHeight = 2.0 / window.getZoom();
         final double xStep = mandWidth / pixWidth;
-        final double yStep = mandHeight / pixHeight;
 
-        if (xStep < MINSTEP || yStep < MINSTEP) {
+        if (xStep < MINSTEP) {
             return overZoom(pixWidth, pixHeight, limit);
         }
 
         final double left = window.getCenterX() - mandWidth / 2.0;
-        final double bottom = window.getCenterY() - mandHeight / 2.0;
+        final double bottom = window.getCenterY() - (pixHeight / 2) * xStep;
 
         final double[] scaleX = IntStream.range(0, pixWidth)
                 .mapToDouble(x -> left + x * xStep).toArray();
         final double[] scaleY = IntStream.range(0, pixHeight)
-                .mapToDouble(y -> bottom + y * yStep).toArray();
+                .mapToDouble(y -> bottom + y * xStep).toArray();
 
         return IntStream
                 .range(0, pixHeight)
